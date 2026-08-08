@@ -44,11 +44,6 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Step 2.5: Setup Engine Android Dependencies
-      - name: Link RSDKv5 to Mania Dependencies
-        run: |
-          rmdir $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5 || true
-          ln -s $PWD $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5
 
       - name: Setup Engine Android Dependencies
         working-directory: ./Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android
@@ -63,7 +58,7 @@ jobs:
       # Step 3: Create Symlinks using $PWD
       - name: Create Symlinks
         run: |
-          JNI_DIR=$PWD/Sonic-mania-decompilation/dependencies/RSDKv5/android/app/jni/
+          JNI_DIR=$PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5/android/app/jni/
           # Create JNI Symlinks pointing to target repos using $PWD
           ln -s $PWD/Sonic-Mania-Decompilation $JNI_DIR/Game
           ln -s $PWD/RSDKv5-Example-Mods/ManiaTouchControls $JNI_DIR/MTC
