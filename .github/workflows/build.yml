@@ -63,12 +63,7 @@ jobs:
       # Step 3: Create Symlinks using $PWD
       - name: Create Symlinks
         run: |
-          # JNI directory inside Mania's RSDKv5 dependency structure
-          JNI_DIR="$PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android/app/jni"
-
-          # Remove existing target entries if present
-          rm -f $JNI_DIR/Game $JNI_DIR/MTC $JNI_DIR/UWM
-
+          JNI_DIR=$PWD/Sonic-mania-decompilation/dependencies/RSDKv5/android/app/jni/
           # Create JNI Symlinks pointing to target repos using $PWD
           ln -s $PWD/Sonic-Mania-Decompilation $JNI_DIR/Game
           ln -s $PWD/RSDKv5-Example-Mods/ManiaTouchControls $JNI_DIR/MTC
