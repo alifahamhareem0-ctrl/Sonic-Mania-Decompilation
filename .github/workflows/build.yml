@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-  workflow_dispatch:
 
 jobs:
   mania-android:
@@ -45,9 +44,14 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Curl dependencies (Between Step 2 and Step 3)
+      # Step 2.5: Setup Engine Android Dependencies
+      - name: Link RSDKv5 to Mania Dependencies
+        run: |
+          rmdir $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5 || true
+          ln -s $PWD $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5
+
       - name: Setup Engine Android Dependencies
-        working-directory: ./dependencies/android
+        working-directory: ./Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android
         run: |
           curl -L -O https://downloads.xiph.org/releases/ogg/libogg-1.3.5.zip
           curl -L -O https://downloads.xiph.org/releases/theora/libtheora-1.1.1.zip
@@ -56,52 +60,46 @@ jobs:
           rsync -ar libogg-*/* libogg
           mv libtheora-* libtheora
 
-      # Step 3: Create Symlinks
+      # Step 3: Create Symlinks using $PWD
       - name: Create Symlinks
         run: |
-          # Ensure RSDKv5 engine is linked in Mania dependencies
-          rmdir $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5 || true
-          ln -s $PWD $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5
-
-          # Define path for JNI links
-          JNI_DIR="$PWD/dependencies/android/app/jni"
+          # JNI directory inside Mania's RSDKv5 dependency structure
+          JNI_DIR="$PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android/app/jni"
 
           # Remove existing target entries if present
           rm -f $JNI_DIR/Game $JNI_DIR/MTC $JNI_DIR/UWM
 
-          # Create Symlinks inside dependencies/android/app/jni
+          # Create JNI Symlinks pointing to target repos using $PWD
           ln -s $PWD/Sonic-Mania-Decompilation $JNI_DIR/Game
           ln -s $PWD/RSDKv5-Example-Mods/ManiaTouchControls $JNI_DIR/MTC
           ln -s $PWD/RSDKv5-Example-Mods/UltrawideMania $JNI_DIR/UWM
 
-          # Create GameAPI Symlinks inside MTC and UWM
+          # Create GameAPI Symlinks inside MTC and UWM using $PWD
           rm -f $PWD/RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
           rm -f $PWD/RSDKv5-Example-Mods/UltrawideMania/GameAPI
           ln -s $PWD/RSDKv5-GameAPI $PWD/RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
           ln -s $PWD/RSDKv5-GameAPI $PWD/RSDKv5-Example-Mods/UltrawideMania/GameAPI
 
       # Step 4: Build
-      - name: Build APKs
-        working-directory: ./dependencies/android
+      - name: Build APK
+        working-directory: ./Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android
         run: |
           ./gradlew assembleRelease --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
           mv app/build/outputs/apk/release/*.apk rsdkv5u_mania.apk
-          ./gradlew clean
-          ./gradlew assembleRelease --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
-          mv app/build/outputs/apk/release/*.apk rsdkv5_mania.apk
 
-      # Step 5: Bundle Mods & Artifacts
+      # Step 5: Bundle Artifacts and Mods
       - name: Bundle Artifacts and Mods
         run: |
+          ANDROID_PATH="$PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android"
           mkdir -p artifacts/mods
-          cp -r dependencies/android/*.apk artifacts/
+          cp -r $ANDROID_PATH/*.apk artifacts/
 
           # Bundle compiled mod assets/libraries
           mkdir -p artifacts/mods/MTC
-          cp -r dependencies/android/app/jni/MTC/build/* artifacts/mods/MTC/ 2>/dev/null || true
+          cp -r $ANDROID_PATH/app/jni/MTC/build/* artifacts/mods/MTC/ 2>/dev/null || true
 
           mkdir -p artifacts/mods/UWM
-          cp -r dependencies/android/app/jni/UWM/build/* artifacts/mods/UWM/ 2>/dev/null || true
+          cp -r $ANDROID_PATH/app/jni/UWM/build/* artifacts/mods/UWM/ 2>/dev/null || true
 
           # Bundle OGL Shader mod configuration
           mkdir -p artifacts/mods/GLShaders/Data/Shaders
@@ -109,16 +107,17 @@ jobs:
           printf "Name=GLShaders\nDescription=OGLShaders\nAuthor=Ducky\nVersion=1.0.0\nTargetVersion=-1\n" > artifacts/mods/GLShaders/mod.ini
           printf "[Mods]\nMTC=y\nUWM=y\nGLShaders=y\n" > artifacts/mods/modconfig.ini
 
-      # Step 6: Remove Every Symlink
+      # Step 6: Remove Every Symlink using $PWD
       - name: Remove Symlinks
         if: always()
         run: |
-          rm -f dependencies/android/app/jni/Game
-          rm -f dependencies/android/app/jni/MTC
-          rm -f dependencies/android/app/jni/UWM
-          rm -f RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
-          rm -f RSDKv5-Example-Mods/UltrawideMania/GameAPI
-          rm -f Sonic-Mania-Decompilation/dependencies/RSDKv5
+          JNI_DIR="$PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5/dependencies/android/app/jni"
+          rm -f $JNI_DIR/Game
+          rm -f $JNI_DIR/MTC
+          rm -f $JNI_DIR/UWM
+          rm -f $PWD/RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
+          rm -f $PWD/RSDKv5-Example-Mods/UltrawideMania/GameAPI
+          rm -f $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5
 
       # Step 7: Upload Artifacts
       - name: Upload Artifacts
