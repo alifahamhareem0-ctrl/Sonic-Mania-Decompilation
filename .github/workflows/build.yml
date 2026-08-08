@@ -1,97 +1,127 @@
-name: Build Mania
+name: Build Sonic Mania Decompilation (Android)
 
 on:
   push:
-    paths:
-      - dependencies/**
-      - SonicMania/**
-      - .github/workflows/build.yml
-      - CMakeLists.txt
     branches:
       - master
 
-env:
-  GENERAL_FLAGS: "-DWITH_RSDK=OFF -DCMAKE_BUILD_TYPE=Release"
-  V5_FLAGS: "-DRETRO_REVISION=2"
-  V5U_FLAGS: "-DRETRO_REVISION=3"
-  # Normally you would use $VCPKG_INSTALLATION_PATH, but it's broken...so hardcode C:/vcpkg
-  GENERAL_WIN_FLAGS: "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-  WIN32_FLAGS: "-DVCPKG_TARGET_TRIPLET=x86-windows-static -A Win32"
-  WIN64_FLAGS: "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
-
 jobs:
-  mania-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build Mania
-        run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel --config Release
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel --config Release
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mkdir artifacts/v5
-          mkdir artifacts/v5U
-          mv ./build_v5/Release/*.dll ./artifacts/v5/
-          mv ./build_v5U/Release/*.dll ./artifacts/v5U/
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mania-windows
-          path: artifacts
-  mania-windows-x64:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build Mania
-        run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel --config Release
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel --config Release
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mkdir artifacts/v5
-          mkdir artifacts/v5U
-          mv ./build_v5/Release/*.dll ./artifacts/v5/
-          mv ./build_v5U/Release/*.dll ./artifacts/v5U/
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mania-windows-x64
-          path: artifacts
-  mania-linux:
+  mania-android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # Step 1: Checkout Repositories
+      - name: Checkout RSDKv5 (Engine Root)
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Build Mania
+
+      - name: Checkout Sonic Mania Decompilation
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/Sonic-Mania-Decompilation"
+          path: "Sonic-Mania-Decompilation"
+          submodules: recursive
+
+      - name: Checkout GameAPI
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/RSDKv5-GameAPI"
+          path: "RSDKv5-GameAPI"
+
+      - name: Checkout Example Mods
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/RSDKv5-Example-Mods"
+          path: "RSDKv5-Example-Mods"
+
+      # Step 2: Setup Android Build Tools
+      - name: Setup Android Build Tools
+        uses: android-actions/setup-android@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Curl dependencies (Between Step 2 and Step 3)
+      - name: Setup Engine Android Dependencies
+        working-directory: ./dependencies/android
         run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel
-      - name: Move artifacts
+          curl -L -O https://downloads.xiph.org/releases/ogg/libogg-1.3.5.zip
+          curl -L -O https://downloads.xiph.org/releases/theora/libtheora-1.1.1.zip
+          unzip \*.zip
+          rm *.zip
+          rsync -ar libogg-*/* libogg
+          mv libtheora-* libtheora
+
+      # Step 3: Create Symlinks
+      - name: Create Symlinks
         run: |
-          mkdir artifacts
-          mkdir artifacts/v5
-          mkdir artifacts/v5U
-          mv ./build_v5/lib*.so ./artifacts/v5/
-          mv ./build_v5U/lib*.so ./artifacts/v5U/
-      - name: Upload artifacts
+          # Ensure RSDKv5 engine is linked in Mania dependencies
+          rmdir $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5 || true
+          ln -s $PWD $PWD/Sonic-Mania-Decompilation/dependencies/RSDKv5
+
+          # Define path for JNI links
+          JNI_DIR="$PWD/dependencies/android/app/jni"
+
+          # Remove existing target entries if present
+          rm -f $JNI_DIR/Game $JNI_DIR/MTC $JNI_DIR/UWM
+
+          # Create Symlinks inside dependencies/android/app/jni
+          ln -s $PWD/Sonic-Mania-Decompilation $JNI_DIR/Game
+          ln -s $PWD/RSDKv5-Example-Mods/ManiaTouchControls $JNI_DIR/MTC
+          ln -s $PWD/RSDKv5-Example-Mods/UltrawideMania $JNI_DIR/UWM
+
+          # Create GameAPI Symlinks inside MTC and UWM
+          rm -f $PWD/RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
+          rm -f $PWD/RSDKv5-Example-Mods/UltrawideMania/GameAPI
+          ln -s $PWD/RSDKv5-GameAPI $PWD/RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
+          ln -s $PWD/RSDKv5-GameAPI $PWD/RSDKv5-Example-Mods/UltrawideMania/GameAPI
+
+      # Step 4: Build
+      - name: Build APKs
+        working-directory: ./dependencies/android
+        run: |
+          ./gradlew assembleRelease --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
+          mv app/build/outputs/apk/release/*.apk rsdkv5u_mania.apk
+          ./gradlew clean
+          ./gradlew assembleRelease --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
+          mv app/build/outputs/apk/release/*.apk rsdkv5_mania.apk
+
+      # Step 5: Bundle Mods & Artifacts
+      - name: Bundle Artifacts and Mods
+        run: |
+          mkdir -p artifacts/mods
+          cp -r dependencies/android/*.apk artifacts/
+
+          # Bundle compiled mod assets/libraries
+          mkdir -p artifacts/mods/MTC
+          cp -r dependencies/android/app/jni/MTC/build/* artifacts/mods/MTC/ 2>/dev/null || true
+
+          mkdir -p artifacts/mods/UWM
+          cp -r dependencies/android/app/jni/UWM/build/* artifacts/mods/UWM/ 2>/dev/null || true
+
+          # Bundle OGL Shader mod configuration
+          mkdir -p artifacts/mods/GLShaders/Data/Shaders
+          cp -r RSDKv5/Shaders/OGL artifacts/mods/GLShaders/Data/Shaders
+          printf "Name=GLShaders\nDescription=OGLShaders\nAuthor=Ducky\nVersion=1.0.0\nTargetVersion=-1\n" > artifacts/mods/GLShaders/mod.ini
+          printf "[Mods]\nMTC=y\nUWM=y\nGLShaders=y\n" > artifacts/mods/modconfig.ini
+
+      # Step 6: Remove Every Symlink
+      - name: Remove Symlinks
+        if: always()
+        run: |
+          rm -f dependencies/android/app/jni/Game
+          rm -f dependencies/android/app/jni/MTC
+          rm -f dependencies/android/app/jni/UWM
+          rm -f RSDKv5-Example-Mods/ManiaTouchControls/GameAPI
+          rm -f RSDKv5-Example-Mods/UltrawideMania/GameAPI
+          rm -f Sonic-Mania-Decompilation/dependencies/RSDKv5
+
+      # Step 7: Upload Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mania-linux
+          name: mania-android
           path: artifacts
